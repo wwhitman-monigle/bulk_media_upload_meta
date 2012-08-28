@@ -1,0 +1,159 @@
+<?php
+/**
+ * @file
+ * Bulk Media Upload Meta Data Module
+ */
+
+/**
+ * Implements hook_menu().
+ */
+function bulk_media_upload_meta_menu() {
+  $items['admin/content/media/bulk_upload/meta'] = array(
+    'title' => 'Bulk Media Upload Meta Form',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('bulk_media_upload_meta_admin'),
+    'access arguments' => array('bulk upload media'),
+    'type' => MENU_LOCAL_TASK,
+    'file' => 'bulk_media_upload_meta.admin.inc',
+  );
+  return $items;
+}
+
+/**
+ * Reusable function for parsing iptcparse() into a human usable format
+ * @param string $file_path - a VALID path from getcwd()
+ * @return array the parsed meta information 
+ */
+function bulk_media_upload_media_parse($file_path) {
+  //Result Array
+  $image_meta = array('file_path'=>$file_path);
+  //Pass by reference info array - our target
+  $image_info = array();
+  //Load up image info
+  $image_size = getimagesize($file_path,$image_info);
+  
+  // did we get the good stuff?
+  if (isset($image_info["APP13"]))
+  { 
+    //Parse it
+    $iptc = iptcparse($image_info["APP13"]);
+    //check it
+    if (is_array($iptc))
+    {
+      if (isset($iptc["2#005"][0]))
+        $image_meta['title'] = $iptc["2#005"][0]; 
+      else
+        $image_meta['title'] = '';
+      if (isset($iptc["2#025"][0]))
+        $image_meta['tags'] = $iptc["2#025"][0]; 
+      else
+        $image_meta['tags'] = '';
+      if (isset($iptc["2#055"][0]))
+        $image_meta['date_created'] = $iptc["2#055"][0]; 
+      else
+        $image_meta['date_created'] = '';
+      if (isset($iptc["2#080"][0]))
+        $image_meta['photographer'] = $iptc["2#080"][0]; 
+      else
+        $image_meta['photographer'] = '';
+      if (isset($iptc["2#085"][0]))
+        $image_meta['credit_byline'] = $iptc["2#085"][0]; 
+      else
+        $image_meta['credit_byline'] = '';
+      if (isset($iptc["2#090"][0]))
+        $image_meta['city'] = $iptc["2#090"][0]; 
+      else
+        $image_meta['city'] = '';
+      if (isset($iptc["2#090"][0]))
+        $image_meta['city'] = $iptc["2#090"][0]; 
+      else
+        $image_meta['city'] = '';
+      if (isset($iptc["2#095"][0]))
+        $image_meta['state'] = $iptc["2#095"][0]; 
+      else
+        $image_meta['state'] = '';
+      if (isset($iptc["2#101"][0]))
+        $image_meta['country'] = $iptc["2#101"][0]; 
+      else
+        $image_meta['country'] = '';
+      if (isset($iptc["2#110"][0]))
+        $image_meta['source'] = $iptc["2#110"][0]; 
+      else
+        $image_meta['source'] = '';
+      if (isset($iptc["2#120"][0]))
+        $image_meta['summary'] = $iptc["2#120"][0]; 
+      else
+        $image_meta['summary'] = '';
+    }
+  }
+  return $image_meta;
+}
+
+/**
+ * Implements hook_node_update($node)
+ * Checks for bulk upload node type then runs meta scan
+ * @param type $node 
+ */
+function bulk_media_upload_meta_node_update($node) {
+  
+  if ($node->type==variable_get('bulk_media_upload_nodetype'))
+  {
+    bulk_media_upload_meta_node_scan($node);
+  } 
+}
+
+/**
+ * Perform the scanning and the setting of the node meta information
+ * @param object $node
+ * @param boolean $ignore_flag Ignore whether the file is flagged for scan 
+ */
+function bulk_media_upload_meta_node_scan($node,$ignore_flag=false) {
+  if ($ignore_flag||$node->field_download_image_scan['und'][0]['value']>0)
+  {
+    $loaded_node = node_load($node->nid, NULL, TRUE);
+
+    $file_path = str_replace('http://','',str_replace('https://','',file_create_url($loaded_node->field_download_image['und'][0]['uri'])));
+
+    $file_parts = explode('/', $file_path);
+    $file_parts[0] = getcwd();
+    $file_path = implode('/',$file_parts);
+
+    $meta_info  = bulk_media_upload_media_parse($file_path);
+
+    $prefix = variable_get('bulk_media_upload_meta_setting', '');
+
+    if ($meta_info['summary'])
+      $node->body[$node->language][0]['value'] = $meta_info['summary'];
+    if ($meta_info['title'])
+      $node->title = truncate_utf8($meta_info['title'], 128, $wordsafe=true);
+
+    if ($meta_info['summary']&&!$meta_info['title'])
+      $node->title = truncate_utf8($meta_info['summary'], 64, $wordsafe=true);
+    //if ($meta_info['tags'])
+    //  $node->field_download_image_tags[$node->language][0]['value'] = 'bob';implode(',',$meta_info['tags']);
+    $node->field_download_image_scan[$node->language][0]['value'] = 0;
+
+    node_save($node);      
+  }
+}
+
+/**
+ * This is the utility function used by both scanning button in the admin menu
+ * @param boolean $ignore_flag Ignore file scan flags?
+ */
+function bulk_media_upload_meta_node_scan_all($ignore_flag=false) {
+  $node_type = variable_get('bulk_media_upload_nodetype');
+  
+  $query = new EntityFieldQuery();
+  $query->entityCondition('entity_type', 'node');
+  $query->entityCondition('bundle', $node_type);
+  
+  $result = $query->execute();
+  $nids = array_keys($result['node']);
+  foreach ($nids as $nid) {
+      $node = node_load($nid);
+      watchdog('bulk_media_upload_meta_node_scan_all: node title', $node->title);
+      bulk_media_upload_meta_node_scan($node,$ignore_flag);
+  }
+  
+}

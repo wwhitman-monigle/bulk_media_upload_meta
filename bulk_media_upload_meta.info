@@ -1,0 +1,11 @@
+name = Bulk Media Upload Meta
+core = 7.x
+package = Media
+description = Monigle Associates Package - Provide Meta Information along with Bulk Upload
+
+dependencies[] = bulk_media_upload
+
+files[] = bulk_media_upload_meta.module
+files[] = bulk_media_upload_meta.admin.inc
+
+version = "7.x-1.x-dev"
