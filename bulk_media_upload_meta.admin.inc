@@ -43,7 +43,6 @@ function bulk_media_upload_meta_admin($form, &$form_state) {
  * Wrapper function for Scan All 
  */
 function bulk_media_upload_meta_node_scan_all_submit() {
-  watchdog('bulk_media_upload_meta_node_scan_all_submit: ', 'scan all');
   bulk_media_upload_meta_node_scan_all(true);
 }
 
@@ -52,7 +51,6 @@ function bulk_media_upload_meta_node_scan_all_submit() {
  * Wrapper function for Scan New 
  */
 function bulk_media_upload_meta_node_scan_new_submit() {
-  watchdog('bulk_media_upload_meta_node_scan_new_submit: ', 'scan new');
   bulk_media_upload_meta_node_scan_all();
 }
 

@@ -45,7 +45,7 @@ function bulk_media_upload_media_parse($file_path) {
       else
         $image_meta['title'] = '';
       if (isset($iptc["2#025"][0]))
-        $image_meta['tags'] = $iptc["2#025"][0]; 
+        $image_meta['tags'] = implode(',',$iptc["2#025"]); 
       else
         $image_meta['tags'] = '';
       if (isset($iptc["2#055"][0]))
@@ -90,6 +90,33 @@ function bulk_media_upload_media_parse($file_path) {
 }
 
 /**
+ * NEEDS TO BE REFACTORED, results of 'all nighter'
+ * @param type $tags
+ * @return type 
+ */
+function bulk_media_upload_meta_scrub_tags($tags) {
+  $new_tags = array();
+  $old_tags = $tags;
+  $old_tags = str_replace(';', ',', $old_tags);
+  $old_tags = str_replace('-', ',', $old_tags);
+  $old_tags = str_replace('_', ',', $old_tags);
+  $old_tags = str_replace(' ', ',', $old_tags);
+  $old_tags = explode(',',$old_tags);
+  foreach($old_tags as $tag) {
+    if (is_string($tag)&&!is_numeric($tag))
+    {
+      $term = new stdClass();
+      $term->name = $tag;
+      $term->vid = 1;
+      taxonomy_term_save($term);
+      $new_tags[] = $term->tid;
+    }
+  }
+  
+  return $new_tags;
+}
+
+/**
  * Implements hook_node_update($node)
  * Checks for bulk upload node type then runs meta scan
  * @param type $node 
@@ -129,8 +156,21 @@ function bulk_media_upload_meta_node_scan($node,$ignore_flag=false) {
 
     if ($meta_info['summary']&&!$meta_info['title'])
       $node->title = truncate_utf8($meta_info['summary'], 64, $wordsafe=true);
-    //if ($meta_info['tags'])
-    //  $node->field_download_image_tags[$node->language][0]['value'] = 'bob';implode(',',$meta_info['tags']);
+    if ($meta_info['tags'])
+    {
+      $tags = $meta_info['tags'];
+      $tags = bulk_media_upload_meta_scrub_tags($tags);
+//      watchdog('bulk_media_upload_meta_scrub_tags: string', $tags);
+
+      $key = 0;
+      foreach ($tags as $tag) {
+        $node->field_download_image_tags[$node->language][$key]['tid'] = $tag;
+        $key++;
+      }//      
+      //if ($tags)
+      //  $node->field_download_image_tags['und'][0] = explode(',', $tags);
+      //$node->field_download_image_tabs[$node->language][0]['value'] = $tags;
+    }
     $node->field_download_image_scan[$node->language][0]['value'] = 0;
 
     node_save($node);      
@@ -147,12 +187,13 @@ function bulk_media_upload_meta_node_scan_all($ignore_flag=false) {
   $query = new EntityFieldQuery();
   $query->entityCondition('entity_type', 'node');
   $query->entityCondition('bundle', $node_type);
-  
+  $query->propertyOrderBy('changed');
+  $query->propertyOrderBy('nid','DESC');
   $result = $query->execute();
   $nids = array_keys($result['node']);
   foreach ($nids as $nid) {
       $node = node_load($nid);
-      watchdog('bulk_media_upload_meta_node_scan_all: node title', $node->title);
+      
       bulk_media_upload_meta_node_scan($node,$ignore_flag);
   }
   
