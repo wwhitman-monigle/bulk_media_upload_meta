@@ -20,6 +20,16 @@ function bulk_media_upload_meta_admin($form, &$form_state) {
     '#required' => TRUE,
   );
 
+  $form['bulk_media_upload_meta_document'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Path to Meta Document'),
+    '#default_value' => variable_get('bulk_media_upload_meta_document', ''),
+    '#size' => 32,
+    '#maxlength' => 255,
+    '#description' => t('(Possible Values: /var/aegir/platforms/core/sites/bob.dev/files/meta.csv'),
+    '#required' => FALSE,
+  );
+
 
 	$form['buttons']['scan_files'] = array(
 	'#type' => 'submit',
@@ -35,6 +45,14 @@ function bulk_media_upload_meta_admin($form, &$form_state) {
 	'#weight' => 10,
 	'#prefix' => '<br /><br />',
 	'#submit' => array('bulk_media_upload_meta_node_scan_new_submit'),
+	);
+
+	$form['buttons']['scan_file'] = array(
+	'#type' => 'submit',
+	'#value' => t('Scan File'),
+	'#weight' => 10,
+	'#prefix' => '<br /><br />',
+	'#submit' => array('bulk_media_upload_meta_node_scan_file_submit'),
 	);
   return system_settings_form($form);
 }
@@ -52,6 +70,14 @@ function bulk_media_upload_meta_node_scan_all_submit() {
  */
 function bulk_media_upload_meta_node_scan_new_submit() {
   bulk_media_upload_meta_node_scan_all();
+}
+
+
+/**
+ * Wrapper function for Scan New 
+ */
+function bulk_media_upload_meta_node_scan_file_submit() {
+  bulk_media_upload_meta_node_scan_file();
 }
 
 ?>

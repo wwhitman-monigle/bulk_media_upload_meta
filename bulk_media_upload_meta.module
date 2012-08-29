@@ -94,7 +94,7 @@ function bulk_media_upload_media_parse($file_path) {
  * @param type $tags
  * @return type 
  */
-function bulk_media_upload_meta_scrub_tags($tags) {
+function bulk_media_upload_meta_scrub_tags($tags,$vid=1) {
   $new_tags = array();
   $old_tags = $tags;
   $old_tags = str_replace(';', ',', $old_tags);
@@ -102,18 +102,32 @@ function bulk_media_upload_meta_scrub_tags($tags) {
   $old_tags = str_replace('_', ',', $old_tags);
   $old_tags = str_replace(' ', ',', $old_tags);
   $old_tags = explode(',',$old_tags);
-  foreach($old_tags as $tag) {
+  foreach($old_tags as $tag)
     if (is_string($tag)&&!is_numeric($tag))
+      $new_tags[] = bulk_media_upload_meta_get_tag($tag,$vid);
+  
+  return $new_tags;
+}
+
+function bulk_media_upload_meta_get_tag($tag,$vid=1) {
+  $tag = ucfirst($tag);
+  if (is_string($tag)&&!is_numeric($tag))
+  {
+    $term = taxonomy_get_term_by_name($tag);
+    if (count($term))
+    {
+      $terms_array = array_keys($term);
+      return $terms_array['0'];
+    }
+    else
     {
       $term = new stdClass();
       $term->name = $tag;
-      $term->vid = 1;
+      $term->vid = $vid;
       taxonomy_term_save($term);
-      $new_tags[] = $term->tid;
+      return $term->tid;
     }
   }
-  
-  return $new_tags;
 }
 
 /**
@@ -139,6 +153,8 @@ function bulk_media_upload_meta_node_scan($node,$ignore_flag=false) {
   {
     $loaded_node = node_load($node->nid, NULL, TRUE);
 
+    $vocab_array = bulk_media_upload_meta_get_csv_ordered_vocab();
+    
     $file_path = str_replace('http://','',str_replace('https://','',file_create_url($loaded_node->field_download_image['und'][0]['uri'])));
 
     $file_parts = explode('/', $file_path);
@@ -159,17 +175,13 @@ function bulk_media_upload_meta_node_scan($node,$ignore_flag=false) {
     if ($meta_info['tags'])
     {
       $tags = $meta_info['tags'];
-      $tags = bulk_media_upload_meta_scrub_tags($tags);
-//      watchdog('bulk_media_upload_meta_scrub_tags: string', $tags);
-
+      $tags = bulk_media_upload_meta_scrub_tags($tags,$vocab_array['image_tags']->vid);
+      
       $key = 0;
       foreach ($tags as $tag) {
         $node->field_download_image_tags[$node->language][$key]['tid'] = $tag;
         $key++;
-      }//      
-      //if ($tags)
-      //  $node->field_download_image_tags['und'][0] = explode(',', $tags);
-      //$node->field_download_image_tabs[$node->language][0]['value'] = $tags;
+      }
     }
     $node->field_download_image_scan[$node->language][0]['value'] = 0;
 
@@ -192,9 +204,154 @@ function bulk_media_upload_meta_node_scan_all($ignore_flag=false) {
   $result = $query->execute();
   $nids = array_keys($result['node']);
   foreach ($nids as $nid) {
-      $node = node_load($nid);
-      
-      bulk_media_upload_meta_node_scan($node,$ignore_flag);
+    $node = node_load($nid);
+    bulk_media_upload_meta_node_scan($node,$ignore_flag);
   }
   
+}
+
+function bulk_media_upload_meta_node_scan_file() {
+  $arrResult = array();
+  $meta_document = variable_get('bulk_media_upload_meta_document');
+  if (!$meta_document)
+  {
+    form_set_error('bulk_media_upload_meta_document', t('A document path is required for this funciton'));
+    return;
+  }
+  if (!file_exists($meta_document))
+  {
+    form_set_error('bulk_media_upload_meta_document', t('A document does not exist at that path (check permissions)'));
+    return;
+  }
+  $handle = fopen($meta_document, "r");
+  if (!$handle) 
+  {
+    form_set_error('bulk_media_upload_meta_document', t('The document could not be opened (check permissions)'));
+    return;
+  }
+  
+  while (($data = fgetcsv($handle, 1000, ",")) !== FALSE) {
+    $arrResult[] = $data;
+  }
+  fclose($handle);
+  
+  $vocab_array = bulk_media_upload_meta_get_csv_ordered_vocab();
+  
+  $node_type = variable_get('bulk_media_upload_nodetype');
+  $query = new EntityFieldQuery();
+  $query->entityCondition('entity_type', 'node');
+  $query->entityCondition('bundle', $node_type);
+  $query->propertyOrderBy('changed');
+  $query->propertyOrderBy('nid','DESC');
+  $result = $query->execute();
+  $nids = array_keys($result['node']);
+  foreach ($nids as $nid) {
+    $node = node_load($nid);
+    $filename = $node->field_download_image['und'][0]['filename'];
+
+    for($i=0;$i<count($arrResult);$i++)
+    {
+      // First Column - Does the file name match?
+      if ($filename == $arrResult[$i][0])
+      {
+        $idx=1;
+
+        //  Second Column
+        $tid = 0;
+        if ($arrResult[$i][$idx]!='')
+        {
+          $tid = bulk_media_upload_meta_get_tag($arrResult[$i][$idx],$vocab_array['patient_care']->vid);
+          if ($tid)
+            $node->field_download_image_patient[$node->language][0]['tid'] = $tid;
+        }
+        $idx++;
+
+        //  Third Column
+        $tid = 0;
+        if ($arrResult[$i][$idx]!='')
+        {
+          $tid = bulk_media_upload_meta_get_tag($arrResult[$i][$idx],$vocab_array['research']->vid);
+          if ($tid)
+            $node->field_download_image_research[$node->language][0]['tid'] = $tid;
+        }
+        $idx++;
+
+        //  Forth Column
+        $tid = 0;
+        if ($arrResult[$i][$idx]!='')
+        {
+          $tid = bulk_media_upload_meta_get_tag($arrResult[$i][$idx],$vocab_array['technology']->vid);
+          if ($tid)
+            $node->field_download_image_technology[$node->language][0]['tid'] = $tid;
+        }
+        $idx++;
+
+        //  Fitfh Column
+        $tid = 0;
+        if ($arrResult[$i][$idx]!='')
+        {
+          $tid = bulk_media_upload_meta_get_tag($arrResult[$i][$idx],$vocab_array['prevention']->vid);
+          if ($tid)
+            $node->field_download_image_prevention[$node->language][0]['tid'] = $tid;
+        }
+        $idx++;
+
+        //  Sixth Column
+        $tid = 0;
+        if ($arrResult[$i][$idx]!='')
+        {
+          $tid = bulk_media_upload_meta_get_tag($arrResult[$i][$idx],$vocab_array['facilities']->vid);
+          if ($tid)
+            $node->field_download_image_facilities[$node->language][0]['tid'] = $tid;
+        }
+        $idx++;
+
+        //  Seventh Column
+        $tid = 0;
+        if ($arrResult[$i][$idx]!='')
+        {
+          $tid = bulk_media_upload_meta_get_tag($arrResult[$i][$idx],$vocab_array['historical']->vid);
+          if ($tid)
+            $node->field_download_image_historical[$node->language][0]['tid'] = $tid;
+        }
+        $idx++;
+
+        //  Eigth Column
+        $tid = 0;
+        if ($arrResult[$i][$idx]!='')
+        {
+          $tid = bulk_media_upload_meta_get_tag($arrResult[$i][$idx],$vocab_array['faculty_staff']->vid);
+          if ($tid)
+            $node->field_download_image_faculty[$node->language][0]['tid'] = $tid;
+        }
+        $idx++;
+        
+        node_save($node);
+        $i=count($arrResult);
+      }
+    }
+  }
+}
+
+function bulk_media_upload_meta_get_csv_ordered_vocab() {
+  $drupal_vocabs = taxonomy_get_vocabularies();
+  
+  $csv_vocabs =  array(
+      'image_tags'=>0,
+      'patient_care'=>0,
+      'research'=>0,
+      'technology'=>0,
+      'prevention'=>0,
+      'facilities'=>0,
+      'historical'=>0,
+      'faculty_staff'=>0
+  );
+  
+  $our_vocab = array();
+  
+  foreach($drupal_vocabs AS $vocab)
+    if (isset($csv_vocabs[$vocab->machine_name]))
+      $our_vocab[$vocab->machine_name] = $vocab;
+  
+  return $our_vocab;
 }
